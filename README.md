@@ -35,23 +35,24 @@ An **end-to-end e-commerce analytics platform** built on the **Olist Brazilian E
        │ 3. Transform & Load Raw  ──►  [PostgreSQL (staging)]    │
        │ 4. Run dbt Build Marts   ──►  [PostgreSQL (public)]     │
        └─────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-                     ┌─────────────────────────────┐
-                     │    POSTGRESQL WAREHOUSE     │
-                     ├─────────────────────────────┤
-                     │ staging.stg_* (Views)       │
-                     │ public.dim_* (Marts)        │
-                     │ public.fact_* (Marts / RFM) │
-                     └──────────────┬──────────────┘
-                                    │
-                  Read-Only User    │ (Hardened Analytics Role)
-                  app_analytics_user│
-                                    ▼
-                     ┌─────────────────────────────┐
-                     │    AI ANALYTICS FRONTEND    │
-                     │  (Streamlit App / app.py)   │
-                     └──────────────┬──────────────┘
+                                     │
+                                     ▼
+                      ┌─────────────────────────────┐
+                      │    POSTGRESQL WAREHOUSE     │
+                      ├─────────────────────────────┤
+                      │ staging.stg_* (Views)       │
+                      │ public.dim_* (Marts)  ──┐   │
+                      │ public.fact_* (Marts) ──┴───┐
+                      └─────────────────────────────┤
+                                                    │
+                             ┌──────────────────────┘ (Bypasses staging layer)
+                             │ Read-Only User
+                             │ app_analytics_user
+                             ▼
+                      ┌──────┬──────────────────────┐
+                      │    AI ANALYTICS FRONTEND    │
+                      │  (Streamlit App / app.py)   │
+                      └──────────────┬──────────────┘
                                     │
                             ┌───────┴───────┐
                             ▼               ▼
@@ -94,9 +95,9 @@ The transformation layer maps staging views to clean analytical dimension and fa
 - **Catalog Obfuscation**: Revokes schema usage and select privileges from `pg_catalog` and `information_schema` systems tables to protect database metadata from structural leaks or catalog probing.
 
 ### ⚡ AI Analytics Assistant & Semantic Cache
-- **Natural Language to SQL**: Converts questions into ANSI-compliant PostgreSQL queries using GPT models.
+- **Semantic Layer Integration (NL-to-SQL)**: Directly targets pre-aggregated, optimized dbt BI Marts (e.g. `fact_orders`, `fact_sales`) rather than raw tables. This minimizes required schema context, significantly saving LLM token costs and reducing database query execution latency.
 - **ChromaDB Semantic Cache**: Local vector store utilizing `text-embedding-3-small` embeddings and a strict $>90\%$ cosine similarity threshold (distance $<0.10$) to skip LLM calls, reduce costs, and serve cached SQL instantly.
-- **Security Validation**: Custom SQL parser verifying queries against blacklisted modification commands (`DROP`, `DELETE`, `UPDATE`, `ALTER`, etc.) before execution.
+- **Security Validation**: Upgraded regex-based SQL validator in `app/validator.py` that handles schema-qualified table names (e.g., `public.fact_sales`) to guarantee read-only compliance without breaking security boundaries or failing on namespace prefixes.
 - **Auto-Visualization**: Automatically maps query results into visual charts (bar, line, scatter) using Streamlit and Plotly.
 
 #### 🚀 Semantic Cache Optimization (Example Logs)
@@ -115,6 +116,51 @@ The transformation layer maps staging views to clean analytical dimension and fa
   INFO: Semantic cache HIT! Serving cached SQL statement.
   Latency: ~0.08 seconds (18x speedup) | Cost: $0.00
   ```
+
+---
+
+## 🌟 Architectural Evolution: From Staging Joins to Semantic Layer
+
+In our initial design, the Streamlit AI Assistant bypassed the compiled dbt marts, executing queries directly against raw staging views. To consolidate the results, the application relied on an ad-hoc, runtime Pandas join layer (`app/join_suggester.py`). This implementation introduced several architectural bottlenecks:
+* **High Latency & Resource Consumption**: Transferring large staging datasets to the application server for in-memory joins led to elevated memory consumption and slow response times.
+* **Redundant Logic & Metrics Drift**: Duplicating relational join definitions across Python code and dbt SQL models compromised our Single Source of Truth (SSOT), creating risks of out-of-sync metrics.
+* **LLM Prompt Bloat**: Exposing the entire staging catalog required sending expansive schemas to the OpenAI API, ballooning token usage and query generation times.
+
+### The Decoupled Semantic Architecture
+
+To resolve these limitations, we underwent a structural refactoring to align the AI Assistant directly with the dbt BI Marts (`public.dim_*` and `public.fact_*`).
+
+```mermaid
+graph TD
+    %% Styling
+    classDef pg fill:#336791,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef dbt fill:#FF6B4A,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef app fill:#FF4B4B,stroke:#fff,stroke-width:2px,color:#fff;
+
+    subgraph Raw Data Ingestion
+        CSV[Kaggle CSVs] -->|Prefect ETL| PG_Stg[(PostgreSQL Staging)]
+    end
+
+    subgraph Analytics Engineering Layer
+        PG_Stg -->|dbt Build| Marts[(dbt BI Marts)]
+        class Marts dbt;
+    end
+
+    subgraph Conversational BI Application
+        Marts -->|Direct Mart Query| App[Streamlit AI Assistant]
+        App -->|Verify Qualified Tables| Val[Upgraded Regex Validator]
+        App <-->|Hit/Miss| Cache[(ChromaDB Cache)]
+        class App,Val app;
+    end
+
+    class PG_Stg pg;
+```
+
+#### Key Engineering Outcomes:
+* **dbt as the 100% Single Source of Truth**: All transactional joins and business metrics (like RFM customer segmentation and aggregated sales) are resolved statically within dbt. Dead Python code and redundant join utilities (`app/join_suggester.py`) have been entirely eliminated.
+* **Minimized Query Context & Lower Token Costs**: The AI Assistant now only requires the metadata schemas of the pre-aggregated dbt marts. This reduction in context-window bloat slashes API token usage and accelerates query synthesis.
+* **Lower DB Latency**: Leverages Postgres index structures on materialized marts rather than executing complex views and runtime Pandas transformations.
+* **Robust Validation**: The SQL security validator in `app/validator.py` is upgraded to cleanly support schema-qualified names (e.g., `public.fact_sales`), securing the DB boundaries while maintaining support for the dbt mart namespace.
 
 ---
 
