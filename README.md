@@ -59,6 +59,20 @@ An **end-to-end e-commerce analytics platform** built on the **Olist Brazilian E
                     (Cosine Dist < 0.1)  (gpt-4o-mini)
 ```
 
+### Data Lineage (dbt DAG)
+The transformation layer maps staging views to clean analytical dimension and fact marts according to the following DAG:
+
+```
+[stg_orders] ────────┐
+                     ├───► [fact_orders]
+[stg_customers] ─────┘
+                     
+[stg_order_items] ───┐
+[stg_products] ──────┼───► [fact_sales]
+[stg_sellers] ───────┘
+```
+*(To view the interactive, fully detailed lineage graph and model descriptions, run `dbt docs generate && dbt docs serve` from the `/dbt` folder).*
+
 ---
 
 ## Key Features
@@ -84,6 +98,23 @@ An **end-to-end e-commerce analytics platform** built on the **Olist Brazilian E
 - **ChromaDB Semantic Cache**: Local vector store utilizing `text-embedding-3-small` embeddings and a strict $>90\%$ cosine similarity threshold (distance $<0.10$) to skip LLM calls, reduce costs, and serve cached SQL instantly.
 - **Security Validation**: Custom SQL parser verifying queries against blacklisted modification commands (`DROP`, `DELETE`, `UPDATE`, `ALTER`, etc.) before execution.
 - **Auto-Visualization**: Automatically maps query results into visual charts (bar, line, scatter) using Streamlit and Plotly.
+
+#### 🚀 Semantic Cache Optimization (Example Logs)
+* **Cache Miss** (New user query ➔ Embeddings ➔ Call LLM ➔ Cache Write):
+  ```text
+  INFO: Generating embedding for user question: "What is monthly revenue?"
+  INFO: Nearest semantic cache match distance: 0.2851 (Similarity: 71.49%)
+  INFO: Semantic cache MISS. Querying OpenAI GPT model...
+  INFO: Successfully cached new verified query-SQL pair.
+  Latency: ~1.45 seconds | Cost: Standard token usage
+  ```
+* **Cache Hit** (Similar user query ➔ Embeddings ➔ ChromaDB Cosine Lookup ➔ Serve SQL):
+  ```text
+  INFO: Generating embedding for user question: "Show me the monthly revenue trend"
+  INFO: Nearest semantic cache match distance: 0.0432 (Similarity: 95.68%)
+  INFO: Semantic cache HIT! Serving cached SQL statement.
+  Latency: ~0.08 seconds (18x speedup) | Cost: $0.00
+  ```
 
 ---
 
@@ -216,6 +247,11 @@ olist-ecommerce-platform/
 ### Option A: Containerized Execution via Docker Compose (Recommended)
 
 This is the easiest way to launch the entire stack (PostgreSQL, Prefect ETL/dbt orchestrator, and Streamlit AI Assistant) without manual local database setups.
+
+> [!IMPORTANT]
+> **Data Mounting Dependency**
+>
+> Before running the containers, ensure you have downloaded the raw Kaggle dataset CSV files and placed them into the `data/raw/` folder on your host machine. The Docker Compose configuration mounts this folder as a volume (`./data:/app/data`) so the ETL process can access the sources.
 
 1. **Build and start the database and web assistant**:
    ```bash
