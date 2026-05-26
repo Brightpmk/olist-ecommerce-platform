@@ -21,16 +21,15 @@ Relationships:
 {relationships}
 
 Business guidance:
-- Revenue should usually be calculated from order_items.price unless the question is explicitly about payments.
-- Freight cost should come from order_items.freight_value.
-- Monthly trends should usually use orders.order_purchase_timestamp.
-- Category names should prefer product_category_name_english when available.
-- Order counts should usually count DISTINCT orders.order_id when joins may duplicate rows.
-- For customer distribution, use customers.customer_state or customers.customer_city.
-- For payment analysis, use order_payments.payment_type, payment_installments, and payment_value.
-- For review analysis, use order_reviews.review_score.
-- For seller analysis, use sellers table joined via order_items.seller_id.
-- The fact_order_item_sales table provides pre-joined revenue data for quick analytics.
+- Revenue should usually be calculated from fact_sales.price or fact_orders.order_revenue. Use fact_sales for detailed product-level analysis, and fact_orders for order-level aggregations.
+- Freight cost should come from fact_sales.freight_value.
+- Monthly trends should use fact_orders.order_date, or join with dim_date (which contains calendar dimensions like year, month, quarter, day_of_week).
+- Category names should use dim_products.product_category_name_english when available.
+- For customer location distribution, use dim_customers.customer_state or dim_customers.customer_city.
+- For RFM customer segmentation queries (e.g. Champions, Loyal, At Risk), query dim_customers' rfm_segment, recency, frequency, monetary, or rfm_score fields.
+- For customer review scores or delivery performance (late delivery, delivery status, delay in days), query fact_orders (review_score, is_late_delivery, delivery_status, delivery_delay_days).
+- For payment analysis (like installments, payment value, payment type counts), use fact_orders (order_total_payment_value, payment_installments_max, payment_type_nunique).
+- For seller analysis, use dim_sellers joined via fact_sales.seller_id.
 
 SQL generation rules:
 - Generate exactly one SQL query.

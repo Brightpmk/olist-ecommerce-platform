@@ -79,17 +79,14 @@ def contains_forbidden_system_access(sql: str) -> bool:
 
 
 def extract_table_names(sql: str) -> list[str]:
-    from_tables = re.findall(
-        r"\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+    # Match tables following FROM or JOIN, accounting for optional schema prefixes (e.g. public.tablename)
+    matches = re.findall(
+        r"\b(?:from|join)\s+(?:([a-zA-Z0-9_]+)\.)?([a-zA-Z_][a-zA-Z0-9_]*)",
         sql,
         flags=re.IGNORECASE,
     )
-    join_tables = re.findall(
-        r"\bjoin\s+([a-zA-Z_][a-zA-Z0-9_]*)",
-        sql,
-        flags=re.IGNORECASE,
-    )
-    return from_tables + join_tables
+    return [table for schema, table in matches]
+
 
 
 def extract_cte_names(sql: str) -> set[str]:
