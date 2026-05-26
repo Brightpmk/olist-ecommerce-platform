@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: public
+    database: ai_analytics_ecommerce
+    schema: public
+    tables:
+      - name: customers
+      - name: products
+      - name: sellers
+      - name: product_category_translation
+      - name: orders
+      - name: order_items
+      - name: order_payments
+      - name: order_reviews
