@@ -1,31 +1,42 @@
 """
 Build analytics marts (star schema fact and dimension tables) from processed data.
-Outputs are saved to data/marts/ directory as CSV.
+Outputs are saved to data/marts/ directory as CSV and loaded directly into PostgreSQL.
 """
 
 import os
 import sys
+import logging
 import pandas as pd
 import numpy as np
+from sqlalchemy import create_engine, text
+
+# Add project root to sys.path so we can import app.config
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from app.config import Config
 
 PROCESSED_PATH = "data/processed/clean_olist_data.csv"
 MARTS_DIR = "data/marts"
 
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
+
 
 def build_date_dimension(df: pd.DataFrame) -> pd.DataFrame:
     """Generate dim_date with one row per calendar date."""
-    print("Building dim_date...")
-    # Convert purchase timestamp to date
+    logger.info("Building dim_date...")
     purchase_dates = pd.to_datetime(df["order_purchase_timestamp"]).dt.date
     min_date = purchase_dates.min()
     max_date = purchase_dates.max()
     
     if pd.isna(min_date) or pd.isna(max_date):
-        # Fallback if dates are empty/missing
         min_date = pd.to_datetime("2016-09-01").date()
         max_date = pd.to_datetime("2018-10-31").date()
 
-    # Generate full date range
     date_range = pd.date_range(start=min_date, end=max_date, freq="D")
     
     dim_date = pd.DataFrame({"date": date_range.date})
@@ -37,14 +48,12 @@ def build_date_dimension(df: pd.DataFrame) -> pd.DataFrame:
     dim_date["day_of_week"] = dim_date["date"].dt.day_name()
     dim_date["is_weekend"] = dim_date["day_of_week"].isin(["Saturday", "Sunday"]).astype(int)
     
-    # Format date back as string for CSV key matching
-    dim_date["date"] = dim_date["date"].dt.strftime("%Y-%m-%d")
     return dim_date
 
 
 def build_products_dimension(df: pd.DataFrame) -> pd.DataFrame:
     """Generate unique dim_products."""
-    print("Building dim_products...")
+    logger.info("Building dim_products...")
     cols = ["product_id", "product_category_name", "product_category_name_english"]
     dim_products = df[cols].drop_duplicates(subset=["product_id"]).copy()
     dim_products["product_category_name_english"] = dim_products["product_category_name_english"].fillna("unknown")
@@ -53,14 +62,14 @@ def build_products_dimension(df: pd.DataFrame) -> pd.DataFrame:
 
 def build_sellers_dimension(df: pd.DataFrame) -> pd.DataFrame:
     """Generate unique dim_sellers."""
-    print("Building dim_sellers...")
+    logger.info("Building dim_sellers...")
     cols = ["seller_id", "seller_city", "seller_state"]
     return df[cols].drop_duplicates(subset=["seller_id"]).copy()
 
 
 def calculate_rfm_segments(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate RFM metrics and assign segment labels for customers."""
-    print("Calculating RFM segments...")
+    logger.info("Calculating RFM segments...")
     
     # Filter for delivered orders to calculate metrics accurately
     delivered = df[df["is_delivered"] == 1].copy()
@@ -140,7 +149,7 @@ def calculate_rfm_segments(df: pd.DataFrame) -> pd.DataFrame:
 
 def build_customers_dimension(df: pd.DataFrame) -> pd.DataFrame:
     """Generate dim_customers enriched with RFM metrics and segments."""
-    print("Building dim_customers...")
+    logger.info("Building dim_customers...")
     cols = ["customer_unique_id", "customer_city", "customer_state"]
     dim_cust = df[cols].drop_duplicates(subset=["customer_unique_id"]).copy()
     
@@ -165,10 +174,10 @@ def build_customers_dimension(df: pd.DataFrame) -> pd.DataFrame:
 
 def build_fact_orders(df: pd.DataFrame) -> pd.DataFrame:
     """Generate order-level fact_orders mart."""
-    print("Building fact_orders...")
-    # Group by order_id to get order-level metrics
+    logger.info("Building fact_orders...")
     base = df.copy()
     base["order_purchase_timestamp"] = pd.to_datetime(base["order_purchase_timestamp"])
+    base["order_date"] = pd.to_datetime(base["order_date"])
     
     fact_orders = (
         base.sort_values(["order_id", "order_item_id"])
@@ -196,7 +205,10 @@ def build_fact_orders(df: pd.DataFrame) -> pd.DataFrame:
 
 def build_fact_sales(df: pd.DataFrame) -> pd.DataFrame:
     """Generate item-level fact_sales mart."""
-    print("Building fact_sales...")
+    logger.info("Building fact_sales...")
+    base = df.copy()
+    base["order_date"] = pd.to_datetime(base["order_date"])
+    
     keep_cols = [
         "order_id",
         "order_item_id",
@@ -208,43 +220,94 @@ def build_fact_sales(df: pd.DataFrame) -> pd.DataFrame:
         "freight_value",
         "revenue"
     ]
-    return df[keep_cols].copy()
+    return base[keep_cols].copy()
+
+
+def load_marts_to_postgres(marts: dict[str, pd.DataFrame]) -> None:
+    """Transactionally load analytical marts to PostgreSQL database."""
+    logger.info("Loading analytics marts to PostgreSQL...")
+    engine = create_engine(Config.DATABASE_URL)
+    
+    # Dependent ordering (children first for deletion, parents first for insertion)
+    delete_order = [
+        "fact_sales",
+        "fact_orders",
+        "dim_customers",
+        "dim_sellers",
+        "dim_products",
+        "dim_date"
+    ]
+    
+    insert_order = [
+        "dim_date",
+        "dim_products",
+        "dim_sellers",
+        "dim_customers",
+        "fact_orders",
+        "fact_sales"
+    ]
+    
+    try:
+        with engine.begin() as conn:
+            # Step 1: Truncate existing data in dependency-safe order
+            for table in delete_order:
+                logger.info(f"Truncating table {table}...")
+                conn.execute(text(f"TRUNCATE TABLE {table} CASCADE;"))
+                
+            # Step 2: Load new dataset using pandas to_sql
+            for table in insert_order:
+                logger.info(f"Writing data to table {table} ({len(marts[table])} rows)...")
+                marts[table].to_sql(
+                    table,
+                    conn,
+                    if_exists="append",
+                    index=False,
+                    method="multi",
+                    chunksize=5000
+                )
+        logger.info("Successfully loaded all marts to PostgreSQL database.")
+    except Exception as e:
+        logger.error(f"Error loading marts to PostgreSQL: {e}")
+        raise e
 
 
 def main() -> None:
     if not os.path.exists(PROCESSED_PATH):
-        print(f"Error: Processed data not found at {PROCESSED_PATH}")
-        print("Please run python analysis/scripts/build_processed_data.py first.")
+        logger.error(f"Processed data not found at {PROCESSED_PATH}")
         sys.exit(1)
         
-    print(f"Loading processed dataset from {PROCESSED_PATH}...")
+    logger.info(f"Loading processed dataset from {PROCESSED_PATH}...")
     df = pd.read_csv(PROCESSED_PATH)
     
     os.makedirs(MARTS_DIR, exist_ok=True)
     
-    # Generate marts
-    dim_date = build_date_dimension(df)
-    dim_products = build_products_dimension(df)
-    dim_sellers = build_sellers_dimension(df)
-    dim_customers = build_customers_dimension(df)
-    fact_orders = build_fact_orders(df)
-    fact_sales = build_fact_sales(df)
+    # Generate marts dataframes
+    marts = {
+        "dim_date": build_date_dimension(df),
+        "dim_products": build_products_dimension(df),
+        "dim_sellers": build_sellers_dimension(df),
+        "dim_customers": build_customers_dimension(df),
+        "fact_orders": build_fact_orders(df),
+        "fact_sales": build_fact_sales(df)
+    }
     
-    # Save marts
-    dim_date.to_csv(os.path.join(MARTS_DIR, "dim_date.csv"), index=False)
-    dim_products.to_csv(os.path.join(MARTS_DIR, "dim_products.csv"), index=False)
-    dim_sellers.to_csv(os.path.join(MARTS_DIR, "dim_sellers.csv"), index=False)
-    dim_customers.to_csv(os.path.join(MARTS_DIR, "dim_customers.csv"), index=False)
-    fact_orders.to_csv(os.path.join(MARTS_DIR, "fact_orders.csv"), index=False)
-    fact_sales.to_csv(os.path.join(MARTS_DIR, "fact_sales.csv"), index=False)
+    # Save local CSV copies
+    for name, df_mart in marts.items():
+        csv_path = os.path.join(MARTS_DIR, f"{name}.csv")
+        # Format date as string strictly for local CSV output
+        df_csv = df_mart.copy()
+        if "date" in df_csv.columns:
+            df_csv["date"] = pd.to_datetime(df_csv["date"]).dt.strftime("%Y-%m-%d")
+        if "order_date" in df_csv.columns:
+            df_csv["order_date"] = pd.to_datetime(df_csv["order_date"]).dt.strftime("%Y-%m-%d")
+            
+        df_csv.to_csv(csv_path, index=False)
+        logger.info(f"Saved local CSV copy to: {csv_path}")
     
-    print("Successfully built all analytics marts in data/marts/ folder:")
-    print(" - dim_date.csv")
-    print(" - dim_products.csv")
-    print(" - dim_sellers.csv")
-    print(" - dim_customers.csv (with RFM segments)")
-    print(" - fact_orders.csv")
-    print(" - fact_sales.csv")
+    # Load to PostgreSQL
+    load_marts_to_postgres(marts)
+    
+    logger.info("Analytics Mart pipelines completed successfully.")
 
 
 if __name__ == "__main__":
