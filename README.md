@@ -213,30 +213,54 @@ olist-ecommerce-platform/
 
 ## Usage
 
-### 1. Run the Orchestrated Ingestion & Transformation Flow
-Execute the Prefect orchestrator to drop and recreate clean schemas, validate data bounds, load raw tables, and automatically trigger dbt compilation to populate staging views and analytics marts:
-```bash
-python main_etl.py
-```
+### Option A: Containerized Execution via Docker Compose (Recommended)
 
-### 2. Standalone dbt Executions
-If you modify dbt SQL models and want to rebuild staging schemas and facts independently:
-```bash
-cd dbt
-dbt run --profiles-dir .
-```
+This is the easiest way to launch the entire stack (PostgreSQL, Prefect ETL/dbt orchestrator, and Streamlit AI Assistant) without manual local database setups.
 
-### 3. Generate Static Analytical Insights
-Generate static charts and summary tables from the PostgreSQL marts database directly into the `outputs/` folder:
-```bash
-python analysis/scripts/run_analysis.py
-```
+1. **Build and start the database and web assistant**:
+   ```bash
+   docker-compose up --build -d db assistant
+   ```
 
-### 4. Start the AI Assistant Streamlit Web App
-Launch the conversational web application:
-```bash
-python -m streamlit run app/main.py
-```
+2. **Trigger the Orchestrated Ingestion & dbt Marts Pipeline**:
+   ```bash
+   docker-compose run --rm etl
+   ```
+   *Note: This service waits for the database container to be healthy, validates raw inputs, populates the transactional tables, and runs dbt transforms in one go.*
+
+3. **Access the Frontend App**:
+   Open [http://localhost:8501](http://localhost:8501) in your browser.
+
+---
+
+### Option B: Local Manual Execution
+
+If you prefer to run the components directly on your host machine:
+
+1. **Run the Ingestion & Transformation Flow**
+   Execute the Prefect orchestrator to initialize schemas, clean and validate inputs, load transactional tables, and compile dbt analytical marts:
+   ```bash
+   python main_etl.py
+   ```
+
+2. **Run Standalone dbt Executions**
+   To compile and run models directly in your local PostgreSQL workspace:
+   ```bash
+   cd dbt
+   dbt run --profiles-dir .
+   ```
+
+3. **Generate Static Analytical Insights**
+   Generate static charts and summary tables from the PostgreSQL marts directly into the `outputs/` folder:
+   ```bash
+   python analysis/scripts/run_analysis.py
+   ```
+
+4. **Launch the AI Assistant Streamlit Web App**
+   Start the conversational user interface:
+   ```bash
+   python -m streamlit run app/main.py
+   ```
 
 ---
 

@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: olist_db
+    environment:
+      POSTGRES_DB: ai_analytics_ecommerce
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_analytics_ecommerce"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  etl:
+    build: .
+    container_name: olist_etl
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ai_analytics_ecommerce
+      DB_USER: postgres
+      DB_PASSWORD: postgres_password
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      MODEL_NAME: gpt-4o-mini
+    command: python main_etl.py
+
+  assistant:
+    build: .
+    container_name: olist_assistant
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ai_analytics_ecommerce
+      DB_USER: postgres
+      DB_PASSWORD: postgres_password
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      MODEL_NAME: gpt-4o-mini
+    command: streamlit run app/main.py --server.port=8501 --server.address=0.0.0.0
+
+volumes:
+  pgdata:
