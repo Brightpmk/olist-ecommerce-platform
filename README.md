@@ -1,92 +1,89 @@
 # Olist E-commerce Analytics Platform
 
 > [!NOTE]
-> **Consolidated Platform**
+> **Consolidated Modern Data Stack Platform**
 >
-> This project is a unified platform created by merging three previous specialized repositories:
-> 1. [**olist-etl-pipeline**](https://github.com/Brightpmk/olist-etl-pipeline) — Robust data ingestion and validation.
+> This project is a unified platform created by merging three specialized systems into a production-grade Modern Data Stack (MDS):
+> 1. [**olist-etl-pipeline**](https://github.com/Brightpmk/olist-etl-pipeline) — Data ingestion and validation.
 > 2. [**olist-ecommerce-data-analysis**](https://github.com/Brightpmk/Basic_data-analysis-project_00) — KPI modeling and structured analytics.
 > 3. [**ecommerce-ai-analytics-assistant**](https://github.com/Brightpmk/ecommerce-ai-analytics-assistant) — LLM-powered natural language interface.
 
-![Python](https://img.shields.io/badge/Python-3.11-blue)
+![Python](https://img.shields.io/badge/Python-3.11+-blue)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-blue)
+![dbt](https://img.shields.io/badge/dbt-Analytics--Engineering-orange)
+![Prefect](https://img.shields.io/badge/Prefect-Orchestrator-red)
+![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector--Cache-lightgrey)
 ![Streamlit](https://img.shields.io/badge/Streamlit-Frontend-red)
 ![OpenAI](https://img.shields.io/badge/LLM-OpenAI-purple)
-![ETL](https://img.shields.io/badge/Data%20Engineering-ETL-blueviolet)
-![Pandas](https://img.shields.io/badge/Pandas-Data%20Processing-green)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-An **end-to-end e-commerce analytics platform** built on the **Olist Brazilian E-commerce dataset**.
-
-This project unifies three core capabilities into a single platform:
-
-1. **ETL Pipeline** — Extract, transform, validate, and load raw CSV data into PostgreSQL
-2. **Data Analysis** — Structured analytics with fact/dimension tables, SQL queries, notebooks, and dashboards
-3. **AI Analytics Assistant** — Natural language to SQL powered by LLM, with safety guardrails and auto-visualization
+An **end-to-end e-commerce analytics platform** built on the **Olist Brazilian E-commerce dataset**. This platform automates ingestion, validates schema constraints, generates analytics marts using dbt, secures query access via a restricted read-only database role, and exposes a Streamlit-based AI assistant with a high-performance semantic query cache.
 
 ---
 
 ## Architecture
 
 ```
-                Raw CSV files
-                     │
-                     ▼
-            ┌─────────────────┐
-            │   ETL Pipeline  │  ← main_etl.py
-            │   Extract       │
-            │   Transform     │
-            │   Validate      │
-            │   Load          │
-            └────────┬────────┘
-                     │
-                     ▼
-            ┌─────────────────┐
-            │   PostgreSQL    │  ← Unified Database
-            │   8 tables +    │
-            │   1 fact table  │
-            └───┬─────────┬───┘
-                │         │
-       ┌────────┘         └────────┐
-       ▼                           ▼
-┌──────────────┐          ┌──────────────────┐
-│ Data Analysis│          │ AI Analytics     │
-│ Scripts      │          │ Assistant        │
-│ Notebooks    │          │ (Streamlit)      │
-│ SQL Queries  │          │ NL → SQL → Chart │
-│ Power BI     │          │ + Business       │
-│ Dashboard    │          │   Insights       │
-└──────────────┘          └──────────────────┘
+                           [ Kaggle Raw CSVs ]
+                                    │
+                                    ▼
+       ┌─────────────────────────────────────────────────────────┐
+       │             PREFECT ORCHESTRATION ENGINE                │
+       │                                                         │
+       │ 1. Initialize DB Schema  ──►  (postgres superuser)      │
+       │ 2. Extract & Validate CSVs                              │
+       │ 3. Transform & Load Raw  ──►  [PostgreSQL (staging)]    │
+       │ 4. Run dbt Build Marts   ──►  [PostgreSQL (public)]     │
+       └─────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+                     ┌─────────────────────────────┐
+                     │    POSTGRESQL WAREHOUSE     │
+                     ├─────────────────────────────┤
+                     │ staging.stg_* (Views)       │
+                     │ public.dim_* (Marts)        │
+                     │ public.fact_* (Marts / RFM) │
+                     └──────────────┬──────────────┘
+                                    │
+                  Read-Only User    │ (Hardened Analytics Role)
+                  app_analytics_user│
+                                    ▼
+                     ┌─────────────────────────────┐
+                     │    AI ANALYTICS FRONTEND    │
+                     │  (Streamlit App / app.py)   │
+                     └──────────────┬──────────────┘
+                                    │
+                            ┌───────┴───────┐
+                            ▼               ▼
+                    [ ChromaDB Cache ]   [ OpenAI API ]
+                    (Cosine Dist < 0.1)  (gpt-4o-mini)
 ```
 
 ---
 
 ## Key Features
 
-### ETL Pipeline
-- Config-driven CSV extraction with file validation
-- Data deduplication, type cleaning, and datetime standardization
-- Comprehensive data validation (null checks, FK checks, domain checks)
-- Schema-based loading into PostgreSQL
-- Pre-built fact table (`fact_order_item_sales`) for quick analytics
-- Data quality report generation
+### 🔄 Data Ingestion & Orchestration (Prefect)
+- **Centralized Workflows**: Orchestrated using Prefect flows and tasks with explicit wait conditions and state dependency graphs.
+- **Failover & Retries**: Tasks are configured with retry policies and delays to recover from transient failures.
+- **Notifications**: Automated failure callbacks simulating alerts routed to Slack channels and email lists (`on_failure` hook).
+- **Data Quality (Great Expectations-like)**: Auto-generates exhaustive HTML/markdown data quality reports covering type validation, null limits, and primary-key anomalies.
 
-### Data Analysis
-- End-to-end reproducible data pipeline (processed → marts)
-- Proper item-level vs order-level metric separation
-- Star schema modeling (fact_sales, fact_orders, dim_customers, dim_products, dim_sellers, dim_date)
-- RFM customer segmentation
-- 12 pre-built SQL analysis queries
-- Automated chart and summary table generation
-- Power BI dashboard integration
+### 📐 Analytics Engineering (dbt)
+- **Logical Layer Separation**: Raw transactional schemas are mapped as staging views (`staging.stg_*`) to preserve source layout.
+- **Star Schema Marts**: Materializes dimensions (`dim_customers`, `dim_products`, `dim_sellers`, `dim_date`) and facts (`fact_orders`, `fact_sales`) in the `public` schema.
+- **RFM Customer Segmentation**: Custom analytical SQL metrics calculating Recency, Frequency, and Monetary scores per customer to power marketing insights.
+- **Incremental Materialization**: Fact tables utilize a custom macro (`incremental_filter`) to rebuild only the latest transactions (e.g. 3-day lookback) for fast, optimized daily runs.
 
-### AI Analytics Assistant
-- Natural language to SQL conversion via OpenAI LLM
-- SQL safety guardrails (blocks DELETE, DROP, UPDATE, etc.)
-- Schema-aware prompt building with business context
-- Automatic chart generation (line/bar based on data patterns)
-- LLM-powered business insight summaries
-- Schema profiling and join suggestion engine
+### 🔒 Hardened Database Security
+- **Least-Privilege Role**: Configures a dedicated `app_analytics_user` role restricted exclusively to `SELECT` access on staging views and analytics marts.
+- **Catalog Obfuscation**: Revokes schema usage and select privileges from `pg_catalog` and `information_schema` systems tables to protect database metadata from structural leaks or catalog probing.
+
+### ⚡ AI Analytics Assistant & Semantic Cache
+- **Natural Language to SQL**: Converts questions into ANSI-compliant PostgreSQL queries using GPT models.
+- **ChromaDB Semantic Cache**: Local vector store utilizing `text-embedding-3-small` embeddings and a strict $>90\%$ cosine similarity threshold (distance $<0.10$) to skip LLM calls, reduce costs, and serve cached SQL instantly.
+- **Security Validation**: Custom SQL parser verifying queries against blacklisted modification commands (`DROP`, `DELETE`, `UPDATE`, `ALTER`, etc.) before execution.
+- **Auto-Visualization**: Automatically maps query results into visual charts (bar, line, scatter) using Streamlit and Plotly.
 
 ---
 
@@ -94,20 +91,18 @@ This project unifies three core capabilities into a single platform:
 
 Source: [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) (Kaggle)
 
-**Note:** To run this project, download the dataset from Kaggle and place the raw CSV files into the `data/raw/` directory.
+To run this platform, download the dataset and place the raw CSV files into the `data/raw/` directory.
 
-
-| Table | Description |
-|-------|-------------|
-| customers | Customer profiles with location |
-| orders | Order metadata and timestamps |
-| order_items | Items within each order |
-| order_payments | Payment details per order |
-| order_reviews | Customer review scores |
-| products | Product attributes |
-| sellers | Seller profiles with location |
-| product_category_translation | Portuguese → English category names |
-| fact_order_item_sales | Pre-joined analytics fact table |
+| File Name / Target | Description |
+|--------------------|-------------|
+| `olist_customers_dataset.csv` | Customer location and ZIP codes |
+| `olist_orders_dataset.csv` | Order timestamps, state, and fulfillment status |
+| `olist_order_items_dataset.csv` | Product IDs, seller IDs, shipping, and pricing |
+| `olist_order_payments_dataset.csv`| Payment sequences, installments, and values |
+| `olist_order_reviews_dataset.csv` | Customer satisfaction review scores |
+| `olist_products_dataset.csv` | Product weight, categories, and dimension metrics |
+| `olist_sellers_dataset.csv` | Seller location and ZIP codes |
+| `product_category_name_translation.csv`| Portuguese-to-English translation mapping |
 
 ---
 
@@ -116,149 +111,129 @@ Source: [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/da
 ```
 olist-ecommerce-platform/
 ├── config/
-│   └── config.yaml              # ETL pipeline configuration
+│   └── config.yaml                 # Ingestion & quality report settings
 ├── db/
-│   ├── schema.sql               # Unified PostgreSQL schema
-│   └── init_db.py               # Database initialization
-├── etl/                         # ETL Pipeline
-│   ├── extract.py               # CSV extraction
-│   ├── transform.py             # Data cleaning & fact table
-│   ├── validate.py              # Data quality validation
-│   ├── load.py                  # PostgreSQL loading
-│   ├── report.py                # Quality report generation
-│   └── logger.py                # Logging setup
-├── app/                         # AI Analytics Assistant
-│   ├── main.py                  # Streamlit application
-│   ├── config.py                # Shared configuration
-│   ├── db.py                    # Database connection
-│   ├── llm.py                   # OpenAI integration
-│   ├── prompt_builder.py        # SQL prompt construction
-│   ├── schema.py                # Schema contract
-│   ├── validator.py             # SQL safety validation
-│   ├── charts.py                # Auto chart generation
-│   ├── insights.py              # Business insight generation
-│   ├── analytics.py             # DataFrame utilities
-│   ├── utils.py                 # Helper functions
-│   ├── schema_profiler.py       # Schema inference engine
-│   └── join_suggester.py        # Join recommendation engine
-├── analysis/                    # Data Analysis
-│   ├── scripts/
-│   │   ├── build_processed_data.py
-│   │   ├── build_analytics_mart.py
-│   │   └── run_analysis.py
-│   └── notebooks/               # Jupyter notebooks
-├── sql/
-│   ├── analysis/                # 12 SQL analysis queries
-│   └── sample_queries.sql       # Example queries
-├── dashboard/                   # Power BI exports & notes
+│   ├── schema.sql                  # Main PostgreSQL transactional schema
+│   ├── init_db.py                  # Database initialization script
+│   └── create_analytics_user.sql   # Hardened read-only analytics role setup
+├── dbt/                            # dbt Analytics Project
+│   ├── dbt_project.yml             # dbt configuration (schema mappings)
+│   ├── profiles.yml                # Target connection profiles (env-injected)
+│   ├── macros/
+│   │   ├── generate_schema_name.sql # Custom schema compilation resolver
+│   │   └── incremental_filter.sql  # High-performance incremental mart loading
+│   └── models/
+│       ├── staging/                # stg_*.sql views for raw tables
+│       └── marts/                  # dim_*.sql and fact_*.sql analytics tables
+├── etl/                            # Ingestion Sub-modules
+│   ├── extract.py                  # CSV loading and directory verification
+│   ├── transform.py                # Ingestion schema mapping
+│   ├── validate.py                 # Out-of-bounds & data type validations
+│   ├── load.py                     # PostgreSQL bulk loading
+│   ├── report.py                   # Data Quality report generation
+│   └── logger.py                   # Python logger configuration
+├── app/                            # AI Assistant Streamlit Application
+│   ├── main.py                     # Main dashboard layout and routing
+│   ├── config.py                   # Environment setup configuration loader
+│   ├── db.py                       # DB engine pool and query timeout controller
+│   ├── llm.py                      # GPT query converter & ChromaDB cache lookup
+│   ├── prompt_builder.py           # Context-aware DB prompt building
+│   ├── validator.py                # SQL safety AST whitelist verification
+│   ├── charts.py                   # Plotly charts generation
+│   └── insights.py                 # Summary text generation using GPT
+├── analysis/
+│   └── scripts/
+│       └── run_analysis.py         # Static reporting (generates graphs)
 ├── data/
-│   └── raw/                     # Raw CSV files
-├── outputs/                     # Generated charts & tables
-├── tests/                       # All test suites
-├── docs/                        # Documentation
-├── main_etl.py                  # ETL entry point
-├── requirements.txt
-├── .env                         # Environment variables
+│   ├── raw/                        # Kaggle raw CSV directory
+│   └── chroma_cache/               # Local SQLite ChromaDB persistence folder
+├── outputs/                        # Figures & summary CSV files output
+├── tests/                          # Validation and profiling tests
+├── main_etl.py                     # Prefect flow orchestrator entrypoint
+├── requirements.txt                # Unified pip dependencies list
 └── README.md
 ```
 
 ---
 
-## Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| Language | Python 3.11 |
-| Database | PostgreSQL |
-| ETL | pandas, PyYAML, SQLAlchemy |
-| Frontend | Streamlit |
-| Visualization | Plotly, Matplotlib |
-| LLM | OpenAI API |
-| Data Processing | pandas, NumPy |
-| Testing | pytest |
-| Dashboard | Power BI |
-
----
-
 ## Installation
 
-```bash
-git clone https://github.com/Brightpmk/olist-ecommerce-platform.git
-cd olist-ecommerce-platform
-python -m venv venv
-venv\Scripts\activate        # Windows
-pip install -r requirements.txt
-```
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/Brightpmk/olist-ecommerce-platform.git
+   cd olist-ecommerce-platform
+   ```
+
+2. **Set up a Python Virtual Environment**:
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate       # Windows
+   source .venv/bin/activate    # macOS/Linux
+   ```
+
+3. **Install Dependencies**:
+   ```bash
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
 
 ---
 
-## Configuration
+## Database Configuration
 
-Create `.env` from the example:
+1. **Initialize Database and Schema**:
+   Ensure PostgreSQL is running. Create a database named `ai_analytics_ecommerce`.
 
-```bash
-copy .env.example .env
-```
+2. **Configure Environment Variables**:
+   Create a `.env` file in the root directory:
+   ```bash
+   copy .env.example .env       # Windows
+   cp .env.example .env         # macOS/Linux
+   ```
 
-Edit `.env`:
+   Configure `.env` using a write-capable database user (like `postgres` or owner) to allow the Prefect ETL flow to load transactional tables and run dbt migrations:
+   ```ini
+   OPENAI_API_KEY=your_openai_key_here
+   MODEL_NAME=gpt-4o-mini
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_NAME=ai_analytics_ecommerce
+   DB_USER=postgres
+   DB_PASSWORD=your_postgres_password_here
+   ```
 
-```
-OPENAI_API_KEY=your_api_key
-MODEL_NAME=gpt-4o-mini
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=ai_analytics_ecommerce
-DB_USER=postgres
-DB_PASSWORD=your_password
-```
+3. **Deploy Read-Only Security Role (Optional but Recommended)**:
+   Connect to your database as superuser and execute the security hardening script to create `app_analytics_user`:
+   ```bash
+   psql -U postgres -d ai_analytics_ecommerce -f db/create_analytics_user.sql
+   ```
+   *Note: For highest security, update client connections in Streamlit `.env` configs to run as `app_analytics_user` with password `bright_secure_analytics_pass_2026`.*
 
 ---
 
 ## Usage
 
-### 1. Run the ETL Pipeline
-
-Load raw CSV data into PostgreSQL:
-
+### 1. Run the Orchestrated Ingestion & Transformation Flow
+Execute the Prefect orchestrator to drop and recreate clean schemas, validate data bounds, load raw tables, and automatically trigger dbt compilation to populate staging views and analytics marts:
 ```bash
 python main_etl.py
 ```
 
-This will:
-- Initialize the database schema
-- Extract CSV files from `data/raw/`
-- Clean and transform the data
-- Validate data quality
-- Load into PostgreSQL
-
-### 2. Build Processed Dataset
-
-Create the denormalized analysis dataset:
-
+### 2. Standalone dbt Executions
+If you modify dbt SQL models and want to rebuild staging schemas and facts independently:
 ```bash
-python analysis/scripts/build_processed_data.py
+cd dbt
+dbt run --profiles-dir .
 ```
 
-### 3. Build Analytics Mart
-
-Generate fact/dimension tables for BI:
-
-```bash
-python analysis/scripts/build_analytics_mart.py
-```
-
-### 4. Run Analysis
-
-Generate charts and summary tables:
-
+### 3. Generate Static Analytical Insights
+Generate static charts and summary tables from the PostgreSQL marts database directly into the `outputs/` folder:
 ```bash
 python analysis/scripts/run_analysis.py
 ```
 
-### 5. Launch AI Analytics Assistant
-
-Start the Streamlit app:
-
+### 4. Start the AI Assistant Streamlit Web App
+Launch the conversational web application:
 ```bash
 python -m streamlit run app/main.py
 ```
@@ -267,23 +242,13 @@ python -m streamlit run app/main.py
 
 ## Testing
 
+Run unit tests to verify transformations, validator parsing rules, schema profilers, and assistant mechanisms:
 ```bash
 pytest
 ```
 
 ---
 
-## Example Questions (AI Assistant)
-
-- What is the monthly revenue trend?
-- Which product categories generate the highest revenue?
-- What are the most common payment types?
-- Which states have the most customers?
-- What is the average review score by delivery status?
-- Which sellers generate the most revenue?
-
----
-
 ## License
 
-MIT License
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

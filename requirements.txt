@@ -6,16 +6,20 @@ psycopg2-binary
 python-dotenv
 pyyaml
 
-# AI / LLM
+# AI / LLM / Vector DB
 openai
+chromadb
 
 # Streamlit App
 streamlit
 plotly
 
-# Analysis
+# Analysis / Orchestration / DBT
 matplotlib
 tabulate
+prefect
+dbt-postgres
 
 # Testing
 pytest
+
