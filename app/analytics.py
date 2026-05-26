@@ -25,6 +25,8 @@ def coerce_datetime_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     for col in converted.columns:
         if "date" in col.lower() or "time" in col.lower() or "month" in col.lower():
+            if pd.api.types.is_numeric_dtype(converted[col]):
+                continue
             try:
                 converted[col] = pd.to_datetime(converted[col])
             except Exception:

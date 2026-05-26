@@ -56,6 +56,7 @@ services:
       DB_PASSWORD: postgres_password
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       MODEL_NAME: gpt-4o-mini
+      PYTHONPATH: /app
     command: streamlit run app/main.py --server.port=8501 --server.address=0.0.0.0
 
 volumes:

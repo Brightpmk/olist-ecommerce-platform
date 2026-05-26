@@ -23,6 +23,7 @@ logs/
 data/raw/*.csv
 data/processed/
 data/marts/
+data/chroma_cache/
 
 # Outputs
 outputs/
