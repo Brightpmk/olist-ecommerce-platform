@@ -1,3 +1,4 @@
+import pytest
 from app.validator import validate_sql
 
 def test_select_passes():
@@ -25,39 +26,14 @@ def test_empty_sql_rejected():
     assert ok is False
 
 
-def test_dim_customers_table_allowed():
-    ok, _ = validate_sql("SELECT rfm_segment, COUNT(*) FROM dim_customers GROUP BY rfm_segment")
+@pytest.mark.parametrize("sql", [
+    "SELECT rfm_segment, COUNT(*) FROM dim_customers GROUP BY rfm_segment",
+    "SELECT product_id, product_category_name_english FROM dim_products LIMIT 5",
+    "SELECT seller_id, seller_state FROM dim_sellers LIMIT 10",
+    "SELECT date, quarter FROM dim_date LIMIT 10",
+    "SELECT product_id, SUM(revenue) FROM fact_sales GROUP BY product_id",
+    "SELECT * FROM public.fact_orders LIMIT 5",
+])
+def test_allowed_tables(sql):
+    ok, _ = validate_sql(sql)
     assert ok is True
-
-
-def test_dim_products_table_allowed():
-    ok, _ = validate_sql(
-        """
-        SELECT pct.product_category_name_english, COUNT(*) AS product_count
-        FROM dim_products pct
-        GROUP BY pct.product_category_name_english
-        """
-    )
-    assert ok is True
-
-
-def test_dim_sellers_table_allowed():
-    ok, _ = validate_sql("SELECT seller_id, seller_state FROM dim_sellers LIMIT 10")
-    assert ok is True
-
-
-def test_dim_date_table_allowed():
-    ok, _ = validate_sql("SELECT date, quarter FROM dim_date LIMIT 10")
-    assert ok is True
-
-
-def test_fact_sales_table_allowed():
-    ok, _ = validate_sql(
-        "SELECT product_id, SUM(revenue) FROM fact_sales GROUP BY product_id"
-    )
-    assert ok is True
-
-def test_schema_qualified_table_allowed():
-    ok, _ = validate_sql("SELECT * FROM public.fact_orders LIMIT 5")
-    assert ok is True
-

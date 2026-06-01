@@ -7,8 +7,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
 
-# Table name mapping: internal key -> PostgreSQL table name
-# 'category_translation' in ETL maps to 'product_category_translation' in PostgreSQL schema
+# category_translation gets renamed in postgres - kept the old key here so the ETL doesn't break
 TABLE_NAME_MAP: Dict[str, str] = {
     "customers": "customers",
     "orders": "orders",
@@ -23,10 +22,9 @@ TABLE_NAME_MAP: Dict[str, str] = {
 
 
 def load_to_postgres(database_url: str | URL, cleaned: Dict[str, pd.DataFrame]) -> None:
-    """Load cleaned DataFrames into PostgreSQL, replacing existing data."""
     engine = create_engine(database_url)
 
-    # Delete in dependency-safe order (children first)
+    # delete children first or FK constraints will complain
     delete_order = [
         "fact_order_item_sales",
         "order_items",
@@ -39,7 +37,7 @@ def load_to_postgres(database_url: str | URL, cleaned: Dict[str, pd.DataFrame]) 
         "product_category_translation",
     ]
 
-    # Insert in dependency-safe order (parents first)
+    # then insert parents before children
     insert_order = [
         "customers",
         "products",

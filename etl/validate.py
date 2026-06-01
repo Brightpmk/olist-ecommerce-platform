@@ -75,7 +75,7 @@ def validate(cleaned: dict[str, pd.DataFrame]) -> None:
     category_translation = cleaned["category_translation"]
     fact = cleaned["fact_order_item_sales"]
 
-    # 1) Not-null checks on important keys
+    # primary keys can't be null
     _check_not_null(customers, "customers", ["customer_id"])
     _check_not_null(orders, "orders", ["order_id", "customer_id"])
     _check_not_null(order_items, "order_items", ["order_id", "order_item_id", "product_id", "seller_id"])
@@ -85,7 +85,6 @@ def validate(cleaned: dict[str, pd.DataFrame]) -> None:
     _check_not_null(sellers, "sellers", ["seller_id"])
     _check_not_null(category_translation, "category_translation", ["product_category_name"])
 
-    # 2) Duplicate key checks
     _check_unique(customers, "customers", ["customer_id"])
     _check_unique(orders, "orders", ["order_id"])
     _check_unique(order_items, "order_items", ["order_id", "order_item_id"])
@@ -95,7 +94,7 @@ def validate(cleaned: dict[str, pd.DataFrame]) -> None:
     _check_unique(sellers, "sellers", ["seller_id"])
     _check_unique(category_translation, "category_translation", ["product_category_name"])
 
-    # 3) Foreign key checks
+    # FK checks - items ref orders/products/sellers, payments+reviews ref orders
     _check_fk(orders, "orders", "customer_id", customers, "customers", "customer_id")
     _check_fk(order_items, "order_items", "order_id", orders, "orders", "order_id")
     _check_fk(order_items, "order_items", "product_id", products, "products", "product_id")
@@ -103,12 +102,12 @@ def validate(cleaned: dict[str, pd.DataFrame]) -> None:
     _check_fk(order_payments, "order_payments", "order_id", orders, "orders", "order_id")
     _check_fk(order_reviews, "order_reviews", "order_id", orders, "orders", "order_id")
 
-    # 4) Domain checks
+    # prices can't be negative, scores must be 1-5
     _check_non_negative(order_items, "order_items", ["price", "freight_value"])
     _check_non_negative(order_payments, "order_payments", ["payment_value"])
     _check_range(order_reviews, "order_reviews", "review_score", 1, 5)
 
-    # 5) Fact table sanity checks
+    # fact table should have everything after the joins
     _check_not_null(
         fact,
         "fact_order_item_sales",

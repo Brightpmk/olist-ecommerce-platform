@@ -18,12 +18,10 @@ logger = logging.getLogger("olist_etl_orchestrator")
 
 
 def notify_failure(flow_obj, flow_run, state):
-    """Mock notification hook for slack / email alerts on pipeline failure."""
-    logger.error(f"!!! FLOW RUN FAILURE ALERT !!!")
-    logger.error(f"Flow Name: {flow_obj.name}")
-    logger.error(f"Flow Run ID: {flow_run.id}")
-    logger.error(f"State Message: {state.message}")
-    logger.error("ALERT: Notification successfully sent to Slack channel #data-ops and email data-alerts@olist.com")
+    # log some info and pretend we notified someone
+    logger.error("pipeline failed!")
+    logger.error(f"flow: {flow_obj.name} | run id: {flow_run.id}")
+    logger.error(f"reason: {state.message}")
 
 
 @task
@@ -63,10 +61,9 @@ def load_task(database_url: str, cleaned: dict):
 def run_dbt_task():
     logger.info("Triggering dbt compile and run for analytics marts...")
     
-    # Locate virtual environment python/dbt executable path
+    # use venv dbt if available, fall back to system path
     venv_dbt = os.path.abspath(os.path.join(".venv", "Scripts", "dbt.exe"))
     if not os.path.exists(venv_dbt):
-        # Fallback to general system path dbt
         venv_dbt = "dbt"
         
     cmd = [
@@ -81,7 +78,6 @@ def run_dbt_task():
     logger.info(f"Running command: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True)
     
-    # Log stdout and stderr
     if result.stdout:
         print(result.stdout)
     if result.stderr:
@@ -102,20 +98,14 @@ def olist_etl_flow():
     quality_report_path = cfg["paths"]["quality_report_path"]
     database_url = Config.DATABASE_URL
 
-    # Define tasks with strict dependencies
     initialize_schema_task(database_url)
-    
+
     raw_dfs = extract_task(raw_dir, tables)
-    
     cleaned_dfs = transform_task(raw_dfs)
-    
     validate_task(raw_dfs, cleaned_dfs, quality_report_path)
-    
-    # Load cleaned transactional data to PostgreSQL
+
     load_raw = load_task(database_url, cleaned_dfs)
-    
-    # Run dbt to rebuild public BI marts incrementally (depends on load completing)
-    run_dbt_task(wait_for=[load_raw])
+    run_dbt_task(wait_for=[load_raw])  # dbt runs after load finishes
 
 
 if __name__ == "__main__":

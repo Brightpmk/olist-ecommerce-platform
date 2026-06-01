@@ -42,7 +42,7 @@ def generate_sql(user_question: str) -> str:
     clean_question = user_question.strip()
     question_hash = hashlib.sha256(clean_question.lower().encode("utf-8")).hexdigest()
     
-    # Step 1: Generate Embedding for the incoming query
+    # generate an embedding so we can check the semantic cache first
     logger.info("Generating embedding for user question...")
     try:
         query_embedding = get_openai_embedding(clean_question, client)
@@ -51,7 +51,7 @@ def generate_sql(user_question: str) -> str:
         # Fallback to direct LLM execution if embeddings fail
         query_embedding = None
 
-    # Step 2: Query Semantic Cache
+    # check the cache before hitting the API
     if query_embedding is not None:
         try:
             collection = get_chroma_collection()
@@ -75,7 +75,7 @@ def generate_sql(user_question: str) -> str:
         except Exception as e:
             logger.warning(f"Semantic cache lookup failed: {e}")
 
-    # Step 3: Cache Miss - Call OpenAI to generate SQL
+    # cache miss - go to OpenAI
     logger.info("Semantic cache MISS. Querying OpenAI GPT model...")
     prompt = build_sql_generation_prompt(clean_question)
 
@@ -94,7 +94,7 @@ def generate_sql(user_question: str) -> str:
     content = response.choices[0].message.content or ""
     sql = strip_markdown_fences(content).strip()
     
-    # Step 4: Validate and Upsert the query into the cache
+    # only cache it if it passes validation
     if query_embedding is not None:
         from app.validator import validate_sql  # Lazy import to prevent circular references
         
