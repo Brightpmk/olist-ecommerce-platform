@@ -19,10 +19,10 @@ class Config:
     DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
     DATABASE_URL = URL.create(
-    drivername="postgresql+psycopg2",
-    username=DB_USER,
-    password=DB_PASSWORD,
-    host=DB_HOST,
-    port=int(DB_PORT),
-    database=DB_NAME,
-)
+        drivername="postgresql+psycopg2",
+        username=DB_USER,
+        password=DB_PASSWORD,
+        host=DB_HOST,
+        port=int(DB_PORT),
+        database=DB_NAME,
+    )

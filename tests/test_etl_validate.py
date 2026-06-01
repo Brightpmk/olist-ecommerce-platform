@@ -4,7 +4,8 @@ import pytest
 from etl.validate import DataValidationError, validate
 
 
-def _make_valid_cleaned():
+@pytest.fixture
+def valid_data():
     return {
         "customers": pd.DataFrame(
             {"customer_id": ["c1"], "customer_unique_id": ["u1"],
@@ -51,22 +52,19 @@ def _make_valid_cleaned():
     }
 
 
-def test_validate_passes_for_valid_data():
-    cleaned = _make_valid_cleaned()
-    validate(cleaned)
+def test_validate_passes_for_valid_data(valid_data):
+    validate(valid_data)
 
 
-def test_validate_fails_on_missing_customer_fk():
-    cleaned = _make_valid_cleaned()
-    cleaned["orders"].loc[0, "customer_id"] = "missing_customer"
+def test_validate_fails_on_missing_customer_fk(valid_data):
+    valid_data["orders"].loc[0, "customer_id"] = "missing_customer"
 
     with pytest.raises(DataValidationError):
-        validate(cleaned)
+        validate(valid_data)
 
 
-def test_validate_fails_on_negative_price():
-    cleaned = _make_valid_cleaned()
-    cleaned["order_items"].loc[0, "price"] = -1
+def test_validate_fails_on_negative_price(valid_data):
+    valid_data["order_items"].loc[0, "price"] = -1
 
     with pytest.raises(DataValidationError):
-        validate(cleaned)
+        validate(valid_data)

@@ -1,10 +1,6 @@
--- ============================================================
--- Olist E-commerce Platform — Unified PostgreSQL Schema
--- Merged from: olist-etl-pipeline + ecommerce-ai-analytics-assistant
--- Extended with: Star Schema BI Mart Tables DDL
--- ============================================================
+-- Unified PostgreSQL Schema (Ingestion + BI Marts)
 
--- Drop in dependency-safe order (children first)
+-- clean drop order (children first)
 DROP TABLE IF EXISTS fact_sales CASCADE;
 DROP TABLE IF EXISTS fact_orders CASCADE;
 DROP TABLE IF EXISTS dim_customers CASCADE;
@@ -22,7 +18,7 @@ DROP TABLE IF EXISTS products CASCADE;
 DROP TABLE IF EXISTS sellers CASCADE;
 DROP TABLE IF EXISTS product_category_translation CASCADE;
 
--- ======================== Dimension Tables (Raw Ingestion) ========================
+-- dimension tables (raw)
 
 CREATE TABLE customers (
     customer_id TEXT PRIMARY KEY,
@@ -56,7 +52,7 @@ CREATE TABLE product_category_translation (
     product_category_name_english TEXT
 );
 
--- ======================== Transactional Tables (Raw Ingestion) ========================
+-- transactional tables (raw)
 
 CREATE TABLE orders (
     order_id TEXT PRIMARY KEY,
@@ -100,7 +96,7 @@ CREATE TABLE order_reviews (
     PRIMARY KEY (review_id, order_id)
 );
 
--- ======================== Pre-Joined Analytical Fact Table ========================
+-- pre-joined analytical fact table
 
 CREATE TABLE fact_order_item_sales (
     order_id TEXT,
@@ -114,7 +110,7 @@ CREATE TABLE fact_order_item_sales (
     revenue NUMERIC(12,2)
 );
 
--- ======================== BI Mart Star Schema Tables ========================
+-- BI mart star schema tables
 
 CREATE TABLE dim_date (
     date DATE PRIMARY KEY,
