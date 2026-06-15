@@ -318,31 +318,31 @@ This is the easiest way to launch the entire stack (PostgreSQL, Prefect ETL/dbt 
 
 ### Option B: Local Manual Execution
 
-If you prefer to run the components directly on your host machine:
+If you prefer to run the components directly on your host machine (with or without activating the virtual environment):
 
 1. **Run the Ingestion & Transformation Flow**
    Execute the Prefect orchestrator to initialize schemas, clean and validate inputs, load transactional tables, and compile dbt analytical marts:
    ```bash
-   python main_etl.py
+   uv run main_etl.py
    ```
 
 2. **Run Standalone dbt Executions**
    To compile and run models directly in your local PostgreSQL workspace:
    ```bash
    cd dbt
-   dbt run --profiles-dir .
+   uv run dbt run --profiles-dir .
    ```
 
 3. **Generate Static Analytical Insights**
    Generate static charts and summary tables from the PostgreSQL marts directly into the `outputs/` folder:
    ```bash
-   python analysis/scripts/run_analysis.py
+   uv run python analysis/scripts/run_analysis.py
    ```
 
 4. **Launch the AI Assistant Streamlit Web App**
    Start the conversational user interface:
    ```bash
-   python -m streamlit run app/main.py
+   uv run streamlit run app/main.py
    ```
 
 ---
@@ -351,7 +351,7 @@ If you prefer to run the components directly on your host machine:
 
 Run unit tests to verify transformations, validator parsing rules, schema profilers, and assistant mechanisms:
 ```bash
-pytest
+uv run pytest
 ```
 
 ---
