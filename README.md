@@ -241,17 +241,18 @@ olist-ecommerce-platform/
    cd olist-ecommerce-platform
    ```
 
-2. **Set up a Python Virtual Environment**:
+2. **Sync the project virtual environment**:
+   This will automatically create a `.venv` virtual environment and install all pinned dependencies from `pyproject.toml` and `uv.lock`:
    ```bash
-   python -m venv .venv
-   .venv\Scripts\activate       # Windows
-   source .venv/bin/activate    # macOS/Linux
+   uv sync
    ```
 
-3. **Install Dependencies**:
+3. **Activate the virtual environment**:
    ```bash
-   pip install --upgrade pip
-   pip install -r requirements.txt
+   # Windows:
+   .venv\Scripts\activate
+   # macOS/Linux:
+   source .venv/bin/activate
    ```
 
 ---
